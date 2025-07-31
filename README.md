@@ -1,93 +1,157 @@
 # Camp-Notes
 
-> Not every user has a right to every web service. This is vital, as you don't want administrative web services to be misused. The API key SHOULD be sent along as a cookie, body parameter, or HTTP message header to ensure that privileged collections or actions are properly protected from unauthorized use. Every API MUST BE authenticated before it can be used.
+## 1) Discovery, documentation, and inventory
 
-Try testing for broken authentication scenarios like reuse of old tokens or using tokens from a different context.
+> Maintain an **API inventory** across production and lower environments; include third-party dependencies. Inventory must be **runtime-validated** to catch undocumented endpoints and schema drift.
 
-> Use standard patterns and frameworks such as OAuth2 or JWT rather than implementing your own authentication or authorization mechanisms.
+> Author documentation in **machine-readable schemas** (OpenAPI/OAS, etc.) and use schema validators in CI/CD—while understanding their limitations. Monitor for **API drift** and close gaps with runtime discovery.
 
-> Server versioning information or any other sensitive information from the HTTP headers SHOULD BE removed/masked according to industry best practices (e.g. removing the Server or 
-X-Powered-By header). This prevents any form of targeted attacks since the vulnerabilities are mostly specific to the vendors.
+> Capture **data flows** in diagrams and classify APIs by sensitivity and data type to prioritize controls.
 
-> Modern browsers support many HTTP headers that can improve web application security to protect against clickjacking, cross-site scripting, and other common attacks. Your API SHOULD use security HTTP headers to improve the level of protection. See the list of OWASP Secure Headers to form the combination of headers. Ideally you SHOULD include HTTP Security Headers at least in these areas unless there is an incompatibility with some functional requirement:
-	• HTTP Strict Transport Security (HSTS)
-	• Content-Security-Policy
-	• X-Frame-Options
-	• X-Content-Type-Options
-	• X-Permitted-Cross-Domain-Policies
-	• Referrer-Policy
-	• Clear-Site-Data
-	• Cross-Origin-Embedder-Policy
-	• Cross-Origin-Opener-Policy
-	• Cross-Origin-Resource-Policy
-	
-> RESTful web services SHOULD use session-based authentication, either by establishing a session token via a POST or by using an API key (Client ID and a Client Secret) as a POST body argument or as a cookie. Usernames, passwords, session tokens, API keys, and sensitive information MUST NOT appear in the URL, as this can be captured in web server logs, which makes them intrinsically valuable.
+---
 
-> RESTful API often use GET (read), POST (create), PUT (replace/update) and DELETE (to delete a record). Not all of these are valid choices for every single resource collection, user, or action. Make sure the incoming HTTP method is valid for the session token/API key and associated resource collection, action, and record.
+## 2) Gateway, identity, and tokens
 
-> Make sure that any default behaviors SHOULD deny access rather than granting them. This ensures that coding errors or unhandled exceptions do not inadvertently grant access. 
-Use claims-based access control to allow access to requests that fulfill concrete authorization policies.
+> Put all externally reachable APIs **behind an API gateway** for centralized authN/Z checks, rate limiting, and logging; avoid re-implementing these features per service.
 
-> While designing a REST API, DO NOT just use 200 for success or 404 for error. Every error message needs to be customized as NOT to reveal any unnecessary information. Here are some guidelines to consider for each REST API status return code. Proper error handle may help to validate the incoming requests and better identify the potential security risks.
-	• 200 OK - Response to a successful REST API action.
-	• 400 Bad Request - The request is malformed, such as message body format error.
-	• 401 Unauthorized - Wrong or no authentication ID/password provided.
-	• 403 Forbidden - It's used when the authentication succeeded but authenticated user doesn't have permission to the requested resource
-	• 404 Not Found - When a non-existent resource is requested
-	• 405 Method Not Allowed - The error checking for unexpected HTTP method. For example, the RestAPI is expecting HTTP GET, but HTTP PUT is used.
-	• 429 Too Many Requests - The error is used when there may be DOS attack detected or the request is rejected due to rate limiting
+> Use a **centralized OAuth/OIDC Authorization Server** to issue and sign tokens; do _not_ mint access/refresh tokens in APIs or gateways. Centralization ensures consistent policies and key management.
 
-> Everything you know about input validation applies to RESTful web services, but add 10% because automated tools can easily fuzz your interfaces for hours on end at high velocity. Help the user input high-quality data into your web services, such as ensuring a Zip code makes sense for the supplied address, or the date makes sense. If not, reject that input. Also, make sure that the output encoding is robust for your application. Some other specific forms of input validations need to be implemented:
-	• Secure parsing: Use a secure parser for parsing the incoming messages. If you are using XML, make sure to use a parser that is NOT VULNERABLE to XXE and similar attacks.
-	• Strong typing: It's difficult to perform most attacks if the only allowed values are true or false, or a number, or one of a small number of acceptable values. Strongly type incoming data as quickly as possible.
-	• Validate incoming content-types: When POSTing or PUTting new data, the client will specify the Content-Type (e.g. application/xml or application/json) of the incoming data. The server SHOULD NEVER assume the Content-Type; it SHOULD ALWAYS check that the Content-Type header and the content are the same types. A lack of Content-Type header or an unexpected Content-Type header SHOULD result in the server rejecting the content with a 406 Not Acceptable response.
-	• Validate response types: It is common for REST services to allow multiple response types (e.g. application/xml or application/json, and the client specifies the preferred order of response types by the Accept header in the request. DO NOT simply copy the Accept header to the Content-type header of the response. Reject the request (ideally with a 406 Not Acceptable response) if the Accept header does not specifically contain one of the allowable types. Because there are many MIME types for the typical response types, it's important to document for clients specifically which MIME types should be used.
-	• XML input validation: XML-based services MUST ensure that they are protected against common XML-based attacks by using secure XML-parsing. This typically means protecting against XML External Entity attacks, XML-signature wrapping etc.
+> Prefer **opaque tokens to external clients; translate to JWTs internally** (phantom/split token patterns) so claims are not depended upon by third parties and privacy is preserved.
 
-> API's input/output data SHOULD escape dangerous characters, tags and HTML attributes that cause JavaScript to be evaluated. You can use standard libraries which have been thoroughly checked by many professionals. However, DO NOT TRY TO DO THIS YOURSELF. Use a known library or the auto-escaping features of your favorite template library. This needs to be done in the browser and on your server if you allow users to submit data that is saved into a database. Relevant article.
+> Use **token exchange** for service-to-service calls to scope privileges narrowly; do not forward a client’s token across trust boundaries.
 
-> Production data or any form of sensitive data SHOULD NOT be used while testing the APIs in the test environment.
+> Enforce **scopes** for coarse-grained authorization at the edge; evaluate finer authorization deeper in the service.
 
-> API rate limiting monitors the access to an API endpoint for a given client (usually based on IP address) and checks to see whether a predetermined allowed number of accesses has been made within a given window. The more robust and preferred option is to use dynamic rate limiting in either an API gateway or an API firewall, where the processing burden can be offloaded to dedicated processors
+---
 
-> Cookies are the primary method used across external-facing APIs to save authentication information in the browser. Client's browsers will automatically send the authentication information with every request to the API. Prevention against Cross Site Request Forgery (CSRF) is a must while using this technique. It is also strongly recommended to use cookies with HTTPOnly and/or Secure flags set. This will allow the browser to send along the token for authentication purposes, but won’t expose it to the JavaScript environment.
+## 3) Authentication and session management
 
-> For resources exposed by RESTful web services, it's important to make sure any PUT, POST, and DELETE request is protected from Cross Site Request Forgery. Typically, one would use a token-based approach. See Cross-Site Request Forgery Prevention Cheat Sheet for more information on how to implement CSRF-protection.
+> **All endpoints require authentication**. Prefer OAuth2/OIDC or signed API keys for server-to-server. Avoid Basic Auth and bespoke schemes.
 
-CSRF is easily achieved even when using random tokens if any XSS exists within your application, so PLEASE MAKE SURE you understand how to prevent XSS
+> For browser clients, **use session cookies** with `HttpOnly`, `Secure`, and appropriate `SameSite`. Pair with CSRF defenses.
 
-> A URL or even a POSTed form SHOULD NEVER contain an access control "key" or similar that provides automatic verification. A contextual data check needs to be done, server side, with each request to protect the API from broken access control. See IDOR for more information.
+> Do **not** place credentials, tokens, or API keys in **URLs**; these leak through logs and referrers. Use the `Authorization` header.
 
-> When your API's resources receive requests from a domain other than the API's domain, you MUST enable cross-origin resource sharing (CORS) for selected methods on the resource. This amounts to having your API respond to the OPTIONS preflight request with at least the following CORS-required response headers:
-	• Access-Control-Allow-Methods
-	• Access-Control-Allow-Headers
-	• Access-Control-Allow-Origin
+> If you adopt JWTs, **pin the algorithm**, set **short expirations**, sign tokens, and **never** accept `alg:"none"`. Exclude sensitive data from claims.
 
-> In addition to HTTPS/TLS, JSON Web Token (JWT) is an open standard that defines a compact and self-contained way for securely transmitting information between parties as a JSON object. JWT can be used not only to ensure the message integrity but also authentication of both message sender/receiver. The JWT includes the digital signature hash value of the message body to ensure message integrity during the transmission.
+---
 
-> When serving up content to your users over TLS, it’s important that you DO NOT include content served over HTTP such as images, JavaScript, or CSS. By mixing HTTP content with HTTPS content, you expose your users to Man-in-the-Middle attacks and eliminate the security benefits that TLS provides.
+## 4) Authorization and access control
 
-> For the communication to be set up, a number of checks on the certificates MUST be passed:
-	• Check certificate expiry
-	• Check CA signature
-	• Check that a value in the Subject Alternative Name extension or in the Subject Distinguished Name field matches the authorized client.
+> Default-deny. Enforce **object-level authorization** (BOLA/IDOR) on _every_ request server-side; never trust client-supplied identifiers.
 
-> The following checklist MUST be followed while using a TLS certificate:
-	• X.509 certificates key length MUST be strong (e.g. if RSA is used the key MUST be at least 2048 bits).
-	• X.509 certificates MUST be signed only with secure hashing algorithms (e.g. not signed using the MD5 hash, due to known collision attacks on this hash).
-	• SHA-1 (or MD5) certificates SHOULD NOT BE used. The problem isn't the security of the server's real certificate; it's the client policy that allows the client to trust low-security certificates. StackExchange link
+> Check that the **HTTP method** is authorized for the caller and resource; respond with **405** when inappropriate.
 
-> The encryption ciphers supported by the server may allow an attacker to eavesdrop on the connection. Verify the following guidelines:
-	• When serving up content to your users, ONLY strong ciphers are enabled (128 bits and above).
-	• When connecting to other remote systems ensure that your client DOES NOT connect using a weak cipher if the server supports it.
-	• Renegotiation MUST be properly configured (e.g. Insecure Renegotiation MUST be disabled, due to Man in the Middle (MiTM) attacks and Client-initiated Renegotiation MUST be disabled, due to Denial of Service vulnerability).
+> Tie **scopes/roles/attributes** to endpoints and data sets; apply least privilege and separate admin planes from data planes.
 
-Further guidance regarding the last two TLS best practices is available in base security requirements documentation
+---
 
-> “Zombie endpoints” are those that are not actively maintained or used as intended, but are still accessible to users. These zombie endpoints are easy targets for attackers, and can compromise an entire API or system.
+## 5) Input validation and content negotiation
 
-Monitoring, managing, and deprecating unused endpoints is essential to eliminate data leakage. In general, API versioning and documentation enable simpler API updates and minimize API implementation drift.
+> Validate all input: **type/format/range/length**; reject unexpected fields and define **request size limits**. Use strong types where possible.
 
+> Use **secure parsers**. Harden XML parsers against **XXE/signature wrapping** or avoid XML where possible.
+
+> Enforce **Content-Type/Accept** strictly. Never mirror `Accept` into `Content-Type`. Use **415/406** when types are wrong.
+
+> Always return the **correct Content-Type**; check error paths.
+
+---
+
+## 6) Output encoding and browser-facing protections
+
+> Encode output and avoid reflecting user input; prevent **XSS/SQLi/RCE** with prepared statements and output encoding.
+
+> Send **security headers** where applicable:  
+> `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and a minimal **Content-Security-Policy** (`default-src 'none'; frame-ancestors 'none'; sandbox`).
+
+---
+
+## 7) Transport security (TLS)
+
+> **TLS is mandatory** for all non-public, state-changing, or credentialed traffic; prefer v1.2+. Enable **HSTS** for your production hostnames.
+
+> Manage certificates and cipher configuration centrally; test regularly. (Security/Platform)
+
+---
+
+## 8) CORS (cross-origin requests)
+
+> For cross-origin browser access, implement **CORS** correctly: handle **preflight** and explicitly set `Access-Control-Allow-Origin/Methods/Headers`.
+
+---
+
+## 9) Error handling and status codes
+
+> Use **consistent error formats**. Avoid leaking stack traces, SQL, config, or internal details in messages.
+
+> Return precise **status codes**: e.g., `401` (unauthenticated), `403` (unauthorized), `404` (not found), `405` (method), `415` (media type), `429` (rate limit). Keep messages generic.
+
+---
+
+## 10) Rate limiting and abuse prevention
+
+> Apply **rate limits/quotas** at the gateway to contain brute force, scraping, and enumeration; tune dynamically as usage evolves.
+
+> Prefer **adaptive controls** over blanket limits; separate per-token, per-IP, and per-resource policies. (Platform)
+
+---
+
+## 11) Logging, monitoring, and audit
+
+> Log **before and after** security-relevant actions to durable storage; capture denied attempts and token validation failures. Centralize logs (SIEM) and set alerts.
+
+> Define what must be logged across infrastructure, apps, and APIs; include performance/uptime telemetry and allocate storage for API analytics.
+
+---
+
+## 12) Data protection and secrets
+
+> Encrypt **in transit** (TLS). Use **masking/redaction** in responses and logs for sensitive fields. (Security/Platform)
+
+> Avoid “encrypting everything twice.” Prefer strong **transport protection** and proven crypto libraries; manage keys properly and **never** hard-code or store in client storage.
+
+> Manage service credentials via **secrets stores** (Kubernetes Secrets/KMS); avoid long-lived keys at rest on disk. Rotate regularly.
+
+---
+
+## 13) Browser threats: CSRF and mixed contexts
+
+> Defend **CSRF**: use anti-CSRF tokens or `SameSite` cookies, and ensure XSS is addressed first. Apply to **state-changing** methods.
+
+---
+
+## 14) Operational hygiene
+
+> **Do not** use production/sensitive data in test environments. Use synthetic or masked data. (Service Owner)
+
+> Lock down **management endpoints**: keep them off the Internet or require MFA, IP restrictions, and separate hosts/ports/subnets.
+
+---
+
+## 15) Versioning, deprecation, and “zombie” endpoints
+
+> Adopt a clear **versioning strategy** and **deprecation policy**; document timelines and migration paths.
+
+> Continuously find and **retire unused or legacy endpoints** to reduce attack surface and stop data leakage; combine documentation with **runtime discovery** to catch drift.
+
+---
+
+## 16) Testing, threat modeling, and assurance
+
+> **Shift left**: perform threat modeling, automated scanning in CI/CD, and regular **pen tests** focused on business-logic abuse.
+
+> Include **business logic** in design reviews; security issues often manifest only after deploy, so prioritize fast **detection and response** in runtime. Map controls to OWASP ASVS.
+
+---
+
+## Appendix A — Additional implementation notes
+
+> Prefer **edge checks**: many controls (transport, rate limits, IP allow/deny) belong in infrastructure/gateway, not application code. Treat them as **infrastructure-as-code** owned by Platform/SRE.
+
+> When using browser-facing APIs, add **Referrer-Policy** alongside CSP and other headers to minimize token leakage via referrers.
+
+> Tools to consider for automation and guardrails (augment, don’t replace review): **Dredd**, **Spectral**, **Vacuum** (OpenAPI lint); **ZAP** for DAST.
 
 
 BONUS:
