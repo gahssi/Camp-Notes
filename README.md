@@ -1,78 +1,80 @@
 # Camp-Notes
 
+## 0. Introduction and scope
 
-## 0) Introduction, scope, and how to use this guide
+### 0.1 Purpose
 
-**What this is.**  
-This guide is a curated set of API **security** best practices developed by engineering and security practitioners. It exists to make secure outcomes repeatable across teams, reduce avoidable mistakes, and capture what works in our environment.
+This document establishes a company-wide baseline for **API security** across the product lifecycle. It translates proven practices into clear, implementable controls for service teams and platform owners so that APIs are designed, built, tested, deployed, operated, and retired with security as a first-class objective.
 
-**Who should use it.**
+### 0.2 Scope and applicability
 
-- **Service Owners / Developers** designing and building APIs.
-    
-- **Platform / SRE** operating gateways, identity, networking, and telemetry.
-    
-- **Security** defining policy, providing guardrails, and assuring controls.
-    
+The guidance applies to all APIs—public, partner, and internal—regardless of architectural style (REST, RPC, GraphQL, event-driven), deployment model (cloud, on-prem, hybrid), or consumer (human, service, device). It covers **security-specific** considerations; broader API design topics are out of scope except where they materially affect security (e.g., versioning, deprecation).
 
-**How to read it.**
+### 0.3 Audience
 
-- Items use **RFC 2119** language (“MUST/SHOULD/MAY”) to signal priority.
-    
-- Treat these as **strong defaults**. Exceptions require risk review and a documented compensating control.
-    
-- Apply practices across the full lifecycle: **design → build → test → deploy → operate → retire**.
-    
+* **Service Owners & Developers** — implement and verify control requirements in code and configuration.
+* **Platform & SRE** — enforce shared controls at gateways, ingress/egress, service mesh, and runtime infrastructure.
+* **Security Engineering** — define standards, provide reference implementations, assure compliance, and monitor risk.
+* **Data Owners** — classify data and approve protective controls proportionate to sensitivity.
 
-**What’s in scope.**  
-Controls for public and internal APIs (REST, GraphQL, gRPC/HTTP), browser- and service-to-service use cases, and the shared platform that enforces them (gateway, identity, observability). General API design topics (naming, pagination, etc.) are out of scope unless they materially affect security.
+### 0.4 Normative language
 
----
+The terms **MUST**, **SHOULD**, and **MAY** indicate requirement strength. Where trade-offs exist, this document favors controls that reduce exploitability, contain blast radius, and simplify assurance.
 
-### 0.1 A short primer: who, how, and what are we securing?
+### 0.5 Lifecycle alignment
 
-**Who interacts with our APIs?**
-- **End users via first/third-party apps** (browsers, mobile, device clients).
-- **Partner and machine clients** (service accounts, backend jobs, integrations).
-    
+Controls are organized to mirror the API lifecycle—**design → build → test → deploy → operate → retire**—so teams can integrate them into architecture reviews, CI/CD, change management, and operational runbooks.
 
-**How do they access?**
-- Through an **edge** (API gateway, WAF, CDN) enforcing TLS, rate limits, authN/Z.
-- With **federated identity** (OAuth2/OIDC), short-lived tokens, and policy at the edge and service tiers.
-- Over **zero-trust** networks: authenticated, authorized, and encrypted by default.
-    
+### 0.6 Security posture and risk overview
 
-**What components make up API security here?**
-- **API gateway** (central authN/Z, quotas, schema checks, threat protections)
-- **Authorization server / IdP** (token issuance, keys/rotation, scopes)
-- **Service mesh / mTLS** for east-west where applicable
-- **Secrets management** (KMS/secret store; no credentials in code or client storage)
-- **Observability** (central logs, traces, metrics, anomaly detection)
-- **CI/CD security** (linting, schema validation, SAST/DAST, dependency checks)
-- **Data protection** (classification, field-level masking/redaction, encryption)
-    
+APIs expose valuable functionality and data through machine interfaces. Compared with traditional web channels, they often present **greater reachability** (more entry points), **finer-grained operations**, and **richer metadata**, which can amplify impact when compromised. Key risk themes include:
 
----
+* **Confidentiality risks**
 
-### 0.2 Why this matters: API-specific risks to address
+  * Excessive data exposure or field-level overfetch; poorly scoped resources and generic endpoints that leak internal representations.
+  * Credential and token leakage via URLs, logs, referrers, browser storage, or misconfigured CORS.
+  * Man-in-the-middle interception when transport protections are weak or mixed content is allowed.
 
-APIs inherit traditional web risks and **amplify** them through automation, richer data, and connectivity. Key risk themes:
-- **Expanded attack surface**: more entry points, more services, more versions; “zombie”/undocumented endpoints and drift increase exposure.
-- **Data overexposure**: overly broad responses, generic or “wildcard” resource access, or direct plumbing of request fields into DB queries.
-- **Broken authZ/authN**: object-level access control failures (BOLA/IDOR), token misuse or leakage, weak session handling, or forwarding end-user tokens across trust boundaries.
-- **Injection and input flaws**: SQL/XML/JSONPath injection, HTTP parameter pollution, unsafe deserialization, and insufficient content-type validation.
-- **Client and browser risks**: XSS enabling CSRF bypass, mixed content over TLS, and permissive CORS causing token or data leakage.
-- **Abuse and availability**: credential-stuffing, scraping, and unbounded writes leading to **DoS** on services or data stores.
-- **Supply and platform misconfig**: weak TLS/ciphers, unmanaged certificates, insecure cloud/container defaults, exposed admin planes, or missing inline malware scanning for uploads.
-- **Privacy and compliance**: APIs concentrating **PII/PHI** increase the blast radius of any breach and require strict minimization and observability.
-- **Error and system leakage**: verbose errors or headers that disclose versions, topology, or internal identifiers.
-    
+* **Integrity risks**
 
-This guide’s controls are structured to mitigate those risks at each lifecycle stage and across the stack—edge, identity, service, data, and runtime operations.
+  * Object- and function-level authorization gaps (BOLA/BFLA) enabling read/write of unauthorized resources.
+  * Injection and deserialization flaws (e.g., SQLi, XSS via consuming apps, XML parser attacks, header/parameter pollution) corrupting data or execution.
+  * Credential stuffing and session weaknesses leading to spoofed identities and tampered requests.
 
-### 0.3 Ownership and accountability
+* **Availability risks**
 
-Every API must have a named **Service Owner**. Shared controls are operated by **Platform/SRE**; security policy, threat modeling, and assurance are owned by **Security**. Ownership is recorded in the API inventory and reviewed at each release and during deprecation.
+  * Abuse of write or search operations (wildcards, expensive queries) to degrade service or exhaust backends.
+  * Unbounded payload sizes, file uploads without inspection, and client-initiated renegotiation/costly handshake patterns.
+  * Zombie and deprecated endpoints that remain routable and exploitable.
+
+* **Operational and ecosystem risks**
+
+  * Incomplete inventory or drift between documented and runtime behavior.
+  * Misconfiguration in cloud/container platforms (overly permissive networks, secrets at rest, weak TLS/ciphers).
+  * Overly verbose errors disclosing implementation details and system topology.
+
+The best practices that follow are designed to **prevent**, **detect**, and **contain** these failures by combining strong identity, least-privilege authorization, robust input/output handling, transport security, abuse prevention, observability, and disciplined lifecycle management.
+
+### 0.7 Design prompts (use before the first line of code)
+
+Teams should answer these questions during design reviews and update them as the API evolves:
+
+* **Consumers & trust boundaries:** Who will call this API (human, service, device)? From which networks? Where does authentication terminate?
+* **Data sensitivity:** What data classes traverse this API? What are the confidentiality/integrity/availability requirements?
+* **Authorization model:** Which roles/scopes/attributes are required per operation and object? How is ownership of resources determined?
+* **Interaction model:** Which methods or operations are allowed? What are size limits, pagination defaults, and query constraints?
+* **Abuse resistance:** What quotas, rate limits, and anomaly signals apply per token, client, IP, and tenant?
+* **Observability:** What must be logged at gateway and service layers? How will denied attempts and token failures be detected and alerted?
+* **Secrets & keys:** Where are credentials stored, rotated, and audited?
+* **Versioning & retirement:** How will changes be introduced, communicated, and how are old endpoints decommissioned?
+* **Operational dependencies:** What upstream/downstream systems are in scope, and how do failure modes propagate?
+
+### 0.8 Roles and responsibilities
+
+* **Service Owner** — accountable for API behavior, implementing control requirements, and remediating findings.
+* **Platform/SRE** — operates gateways/meshes, enforces central policies (authN/Z, TLS, quotas), and maintains secure defaults.
+* **Security Engineering** — authors standards, provides guardrails (linters, templates, pipelines), performs threat modeling and assurance testing, and monitors runtime risk.
+* **Data Owner** — classifies data, approves retention and masking rules, and signs off on exposure through APIs.
 
 ---
 
